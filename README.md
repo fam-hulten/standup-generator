@@ -11,12 +11,11 @@ python3 standup.py --since=2026-04-05
 # Med worktree auto-discovery (Robert's miljö)
 python3 standup.py --since=2026-04-05 --worktrees
 
-# Med egna repos (Lilly's miljö)
+# För Lilly (gateway container):
 python3 standup.py --since=2026-04-05 \
   --repos /home/johanna/.openclaw/repos/lilly-ops \
-          /home/johanna/.openclaw/repos/studywise-workspace \
-          /home/johanna/.openclaw/repos/shared-workspace \
-          /home/johanna/.openclaw/repos/openclaw-infrastructure \
+  --repos /home/johanna/.openclaw/repos/studywise-workspace \
+  --repos /home/johanna/.openclaw/repos/shared-workspace \
   --memory-dir /home/johanna/.openclaw/workspace/memory/
 ```
 
