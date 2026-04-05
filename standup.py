@@ -12,11 +12,32 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 DEFAULT_MEMORY_DIR = os.path.expanduser("~/.openclaw/workspace/memory/")
-DEFAULT_REPOS = [
+
+# Default repos for Lilly (gateway container)
+LILLY_REPOS = [
+    "/home/johanna/.openclaw/repos/lilly-ops",
+    "/home/johanna/.openclaw/repos/studywise-workspace",
+    "/home/johanna/.openclaw/repos/shared-workspace",
+    "/home/johanna/.openclaw/repos/openclaw-infrastructure",
+]
+
+# Default repos for Robert (WSL)
+ROBERT_REPOS = [
     "~/projects/studywise-api",
     "~/projects/shared-workspace",
     "~/projects/grocy-discord-bot",
 ]
+
+# Try to auto-detect environment
+if os.path.exists("/home/johanna/.openclaw/repos"):
+    DEFAULT_REPOS = LILLY_REPOS
+else:
+    DEFAULT_REPOS = ROBERT_REPOS
+
+# Worktree patterns for auto-discovery
+WORKTREE_PATTERNS = {
+    "studywise-api": "~/projects/studywise-api-*",
+}
 
 
 def get_commits(repo_path: str, since: str) -> list[tuple[str, str]]:
@@ -40,6 +61,17 @@ def get_commits(repo_path: str, since: str) -> list[tuple[str, str]]:
         print(f"Warning: Could not read {repo_path}: {e}", file=sys.stderr)
     
     return commits
+
+
+def discover_worktrees(repo_name: str, pattern: str) -> list[str]:
+    """Discover worktrees matching pattern. Returns list of worktree paths."""
+    import glob
+    worktrees = []
+    expanded = os.path.expanduser(pattern)
+    for path in glob.glob(expanded):
+        if os.path.isdir(path):
+            worktrees.append(path)
+    return worktrees
 
 
 def get_memory_notes(memory_dir: str, since: str) -> str:
@@ -104,11 +136,20 @@ def main():
     parser.add_argument("--since", required=True, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR, help="Memory files directory")
     parser.add_argument("--repos", nargs="+", default=DEFAULT_REPOS, help="Repos to scan")
+    parser.add_argument("--worktrees", action="store_true", help="Auto-discover worktrees for default repos")
     
     args = parser.parse_args()
     
     all_commits = []
-    for repo in args.repos:
+    repos_to_scan = list(args.repos)
+    
+    # Auto-discover worktrees if requested
+    if args.worktrees:
+        for repo_name, pattern in WORKTREE_PATTERNS.items():
+            worktrees = discover_worktrees(repo_name, pattern)
+            repos_to_scan.extend(worktrees)
+    
+    for repo in repos_to_scan:
         commits = get_commits(repo, args.since)
         all_commits.extend(commits)
     

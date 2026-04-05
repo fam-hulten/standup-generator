@@ -5,42 +5,55 @@ Genererar standup-rapporter för Discord från git commits och memory-filer.
 ## Användning
 
 ```bash
-python3 standup.py --since=YYYY-MM-DD
-```
+# Standard: scanna default repos
+python3 standup.py --since=2026-04-05
 
-## Exempel
+# Med worktree auto-discovery (Robert's miljö)
+python3 standup.py --since=2026-04-05 --worktrees
 
-```bash
-python3 standup.py --since=2026-04-04
+# Med egna repos (Lilly's miljö)
+python3 standup.py --since=2026-04-05 \
+  --repos /home/johanna/.openclaw/repos/lilly-ops \
+          /home/johanna/.openclaw/repos/studywise-workspace \
+          /home/johanna/.openclaw/repos/shared-workspace \
+          /home/johanna/.openclaw/repos/openclaw-infrastructure \
+  --memory-dir /home/johanna/.openclaw/workspace/memory/
 ```
 
 ## Output
 
 ```markdown
-## 📅 Igår (2026-04-04)
+📅 **Igår (2026-04-05):**
 
-- [studywise-api] Fixed bug in CLI handler
-- [shared-workspace] Added documentation
+- [repo] Commit message
+- ...
 
-## 🔨 Idag
+🔨 **Idag:**
 
-- Continue work on...
+- Fortsätt med pågående arbete
 
-## ⚠️ Blocker
+⚠️ **Blockers:**
 
 - Inga kända
 ```
 
-## Installation
+## Auto-discovery
 
-Klona och kör direkt:
+Verktyget auto-detectar miljö:
+- Lilly (gateway container): `/home/johanna/.openclaw/repos/`
+- Robert (WSL): `~/projects/`
+
+Worktree scanning med `--worktrees` hittar:
+- `studywise-api-*` worktrees i `~/projects/`
+
+## Installation
 
 ```bash
 git clone https://github.com/fam-hulten/standup-generator.git
 cd standup-generator
-python3 standup.py --since=$(date -v-1d +%Y-%m-%d)
+python3 standup.py --since=$(date +%Y-%m-%d)
 ```
 
 ## Konfiguration
 
-Redigera `DEFAULT_REPOS` och `DEFAULT_MEMORY_DIR` i `standup.py` för att anpassa.
+Redigera `DEFAULT_REPOS` i `standup.py` för att anpassa.
