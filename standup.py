@@ -65,7 +65,7 @@ def format_report(commits: list[tuple[str, str]], memory_notes: str, since: str)
     """Format the standup report as Discord-friendly markdown."""
     yesterday = datetime.strptime(since, "%Y-%m-%d").strftime("%Y-%m-%d")
     
-    report = f"""## 📅 Igår ({yesterday})
+    report = f"""📅 **Igår ({yesterday}):**
 
 """
     
@@ -83,10 +83,10 @@ def format_report(commits: list[tuple[str, str]], memory_notes: str, since: str)
     else:
         report += "- Inga commits hittade\n"
     
-    report += "\n## 🔨 Idag\n\n"
+    report += "\n🔨 **Idag:**\n\n"
     report += "- Fortsätt med pågående arbete\n"
     
-    report += "\n## ⚠️ Blocker\n\n"
+    report += "\n⚠️ **Blockers:**\n"
     report += "- Inga kända\n"
     
     if memory_notes:
