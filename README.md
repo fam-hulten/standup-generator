@@ -1,58 +1,34 @@
 # Standup Generator
 
-Genererar standup-rapporter för Discord från git commits och memory-filer.
+Generate daily standup reports from git commits and memory notes.
 
-## Användning
-
-```bash
-# Standard: scanna default repos
-python3 standup.py --since=2026-04-05
-
-# Med worktree auto-discovery (Robert's miljö)
-python3 standup.py --since=2026-04-05 --worktrees
-
-# För Lilly (gateway container):
-python3 standup.py --since=2026-04-05 \
-  --repos /home/johanna/.openclaw/repos/lilly-ops \
-  --repos /home/johanna/.openclaw/repos/studywise-workspace \
-  --repos /home/johanna/.openclaw/repos/shared-workspace \
-  --memory-dir /home/johanna/.openclaw/workspace/memory/
-```
-
-## Output
-
-```markdown
-📅 **Igår (2026-04-05):**
-
-- [repo] Commit message
-- ...
-
-🔨 **Idag:**
-
-- Fortsätt med pågående arbete
-
-⚠️ **Blockers:**
-
-- Inga kända
-```
-
-## Auto-discovery
-
-Verktyget auto-detectar miljö:
-- Lilly (gateway container): `/home/johanna/.openclaw/repos/`
-- Robert (WSL): `~/projects/`
-
-Worktree scanning med `--worktrees` hittar:
-- `studywise-api-*` worktrees i `~/projects/`
-
-## Installation
+## Usage
 
 ```bash
-git clone https://github.com/fam-hulten/standup-generator.git
-cd standup-generator
-python3 standup.py --since=$(date +%Y-%m-%d)
+python standup.py --repos /path/to/repos --memory-dir /path/to/memory [--days 1]
 ```
 
-## Konfiguration
+### Arguments
 
-Redigera `DEFAULT_REPOS` i `standup.py` för att anpassa.
+- `--repos` – Comma-separated repo paths (or parent directories containing repos)
+- `--memory-dir` – Path to memory files
+- `--days` – Days to look back (default: 1)
+
+### Example
+
+```bash
+python standup.py --repos /home/robert/projects/shared-workspace --memory-dir /home/robert/.openclaw/workspace/memory
+```
+
+## Output Format
+
+```
+## 📅 Igår
+- commit messages grouped by repo
+
+## 🔨 Idag
+- planned tasks from memory files
+
+## ⚠️ Blocker
+- any blockers mentioned
+```

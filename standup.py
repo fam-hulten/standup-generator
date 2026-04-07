@@ -1,163 +1,215 @@
 #!/usr/bin/env python3
-"""
-Standup Generator - Generates standup reports from git commits and memory files.
-Usage: python standup.py --since=YYYY-MM-DD [--memory-dir ~/.openclaw/workspace/memory/]
-"""
+
+"""Generate a daily standup report from git commits and memory notes."""
+
+from __future__ import annotations
 
 import argparse
-import os
+import re
 import subprocess
 import sys
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DEFAULT_MEMORY_DIR = os.path.expanduser("~/.openclaw/workspace/memory/")
-
-# Default repos for Lilly (gateway container)
-LILLY_REPOS = [
-    "/home/johanna/.openclaw/repos/lilly-ops",
-    "/home/johanna/.openclaw/repos/studywise-workspace",
-    "/home/johanna/.openclaw/repos/shared-workspace",
-    "/home/johanna/.openclaw/repos/openclaw-infrastructure",
-]
-
-# Default repos for Robert (WSL)
-ROBERT_REPOS = [
-    "~/projects/studywise-api",
-    "~/projects/shared-workspace",
-    "~/projects/grocy-discord-bot",
-]
-
-# Try to auto-detect environment
-if os.path.exists("/home/johanna/.openclaw/repos"):
-    DEFAULT_REPOS = LILLY_REPOS
-else:
-    DEFAULT_REPOS = ROBERT_REPOS
-
-# Worktree patterns for auto-discovery
-WORKTREE_PATTERNS = {
-    "studywise-api": "~/projects/studywise-api-*",
-}
+PLAN_KEYWORDS = ("idag", "today", "plan", "todo", "next")
+BLOCKER_KEYWORDS = ("blocker", "blockers", "hinder", "blocked")
 
 
-def get_commits(repo_path: str, since: str) -> list[tuple[str, str]]:
-    """Get commits since given date from repo. Returns list of (repo_name, commit_message)."""
-    repo_name = os.path.basename(os.path.abspath(os.path.expanduser(repo_path)))
-    commits = []
-    
-    try:
-        result = subprocess.run(
-            ["git", "log", f"--since={since}", "--format=%s"],
-            cwd=os.path.expanduser(repo_path),
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line:
-                    commits.append((repo_name, line))
-    except Exception as e:
-        print(f"Warning: Could not read {repo_path}: {e}", file=sys.stderr)
-    
-    return commits
-
-
-def discover_worktrees(repo_name: str, pattern: str) -> list[str]:
-    """Discover worktrees matching pattern. Returns list of worktree paths."""
-    import glob
-    worktrees = []
-    expanded = os.path.expanduser(pattern)
-    for path in glob.glob(expanded):
-        if os.path.isdir(path):
-            worktrees.append(path)
-    return worktrees
-
-
-def get_memory_notes(memory_dir: str, since: str) -> str:
-    """Extract notes from memory file for given date."""
-    memory_path = Path(memory_dir) / f"{since}.md"
-    if not memory_path.exists():
-        return ""
-    
-    try:
-        content = memory_path.read_text()
-        # Extract sections (lines starting with ## or ###)
-        lines = []
-        for line in content.split("\n"):
-            if line.startswith("##"):
-                lines.append(line.strip())
-        return "\n".join(lines[:10])  # Limit to first 10 sections
-    except Exception as e:
-        print(f"Warning: Could not read {memory_path}: {e}", file=sys.stderr)
-        return ""
-
-
-def format_report(commits: list[tuple[str, str]], memory_notes: str, since: str) -> str:
-    """Format the standup report as Discord-friendly markdown."""
-    yesterday = datetime.strptime(since, "%Y-%m-%d").strftime("%Y-%m-%d")
-    
-    report = f"""📅 **Igår ({yesterday}):**
-
-"""
-    
-    if commits:
-        # Group by repo
-        by_repo = {}
-        for repo, msg in commits:
-            if repo not in by_repo:
-                by_repo[repo] = []
-            by_repo[repo].append(msg)
-        
-        for repo, messages in by_repo.items():
-            for msg in messages[:5]:  # Max 5 per repo
-                report += f"- [{repo}] {msg}\n"
-    else:
-        report += "- Inga commits hittade\n"
-    
-    report += "\n🔨 **Idag:**\n\n"
-    report += "- Fortsätt med pågående arbete\n"
-    
-    report += "\n⚠️ **Blockers:**\n"
-    report += "- Inga kända\n"
-    
-    if memory_notes:
-        report += f"\n---\n**Anteckningar från igår:**\n{memory_notes}"
-    
-    # Truncate if too long
-    if len(report) > 500:
-        report = report[:497] + "..."
-    
-    return report
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Generate standup reports for Discord")
-    parser.add_argument("--since", required=True, help="Start date (YYYY-MM-DD)")
-    parser.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR, help="Memory files directory")
-    parser.add_argument("--repos", nargs="+", default=DEFAULT_REPOS, help="Repos to scan")
-    parser.add_argument("--worktrees", action="store_true", help="Auto-discover worktrees for default repos")
-    
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a standup report")
+    parser.add_argument(
+        "--repos",
+        required=True,
+        help="Comma-separated repo paths (or parent dirs containing repos)",
+    )
+    parser.add_argument("--memory-dir", required=True, help="Path to memory files")
+    parser.add_argument(
+        "--days", type=int, default=1, help="Days to look back (default: 1)"
+    )
     args = parser.parse_args()
-    
-    all_commits = []
-    repos_to_scan = list(args.repos)
-    
-    # Auto-discover worktrees if requested
-    if args.worktrees:
-        for repo_name, pattern in WORKTREE_PATTERNS.items():
-            worktrees = discover_worktrees(repo_name, pattern)
-            repos_to_scan.extend(worktrees)
-    
-    for repo in repos_to_scan:
-        commits = get_commits(repo, args.since)
-        all_commits.extend(commits)
-    
-    memory_notes = get_memory_notes(args.memory_dir, args.since)
-    
-    report = format_report(all_commits, memory_notes, args.since)
-    print(report)
+
+    if args.days < 1:
+        parser.error("--days must be >= 1")
+    return args
+
+
+def run_git(args: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+
+
+def is_git_repo(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    result = run_git(["rev-parse", "--is-inside-work-tree"], path)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def resolve_repos(raw_csv: str) -> list[Path]:
+    repos: list[Path] = []
+
+    for raw_entry in raw_csv.split(","):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+
+        path = Path(entry).expanduser().resolve()
+        if is_git_repo(path):
+            repos.append(path)
+            continue
+
+        if path.is_dir():
+            for child in sorted(path.iterdir()):
+                if child.is_dir() and is_git_repo(child):
+                    repos.append(child)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for repo in repos:
+        if repo not in seen:
+            unique.append(repo)
+            seen.add(repo)
+    return unique
+
+
+def get_recent_commits(repo: Path, days: int) -> list[str]:
+    result = run_git(
+        ["log", f"--since={days}.days", "--no-merges", "--pretty=%s"],
+        repo,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or "unknown git error"
+        print(f"Warning: Could not read commits from {repo}: {stderr}", file=sys.stderr)
+        return []
+
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def clean_bullet(text: str) -> str:
+    without_prefix = re.sub(r"^[-*]\s+(\[[ xX]\]\s+)?", "", text.strip())
+    without_numbering = re.sub(r"^\d+[.)]\s+", "", without_prefix)
+    return without_numbering.strip()
+
+
+def extract_section_items(markdown: str, keywords: tuple[str, ...]) -> list[str]:
+    items: list[str] = []
+    in_target_section = False
+
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+
+        heading = re.match(r"^#{1,6}\s+(.+)$", line)
+        if heading:
+            heading_text = heading.group(1).strip().lower()
+            in_target_section = any(keyword in heading_text for keyword in keywords)
+            continue
+
+        if not in_target_section or not line:
+            continue
+
+        if line.startswith(("-", "*")) or re.match(r"^\d+[.)]\s+", line):
+            cleaned = clean_bullet(line)
+            if cleaned:
+                items.append(cleaned)
+
+    return items
+
+
+def dedupe(items: list[str]) -> list[str]:
+    return list(OrderedDict((item, None) for item in items).keys())
+
+
+def collect_memory_data(memory_dir: Path, days: int) -> tuple[list[str], list[str]]:
+    if not memory_dir.is_dir():
+        return [], []
+
+    cutoff = datetime.now() - timedelta(days=days)
+    candidates = sorted(
+        memory_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    recent_files = [
+        p for p in candidates if datetime.fromtimestamp(p.stat().st_mtime) >= cutoff
+    ]
+    files_to_scan = recent_files or candidates[:3]
+
+    planned: list[str] = []
+    blockers: list[str] = []
+
+    for memory_file in files_to_scan:
+        try:
+            content = memory_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Warning: Could not read {memory_file}: {exc}", file=sys.stderr)
+            continue
+
+        planned.extend(extract_section_items(content, PLAN_KEYWORDS))
+        blockers.extend(extract_section_items(content, BLOCKER_KEYWORDS))
+
+    return dedupe(planned), dedupe(blockers)
+
+
+def format_report(
+    commits_by_repo: OrderedDict[str, list[str]],
+    planned: list[str],
+    blockers: list[str],
+) -> str:
+    lines: list[str] = ["## 📅 Igår", ""]
+
+    has_commits = any(commits_by_repo.values())
+    if has_commits:
+        for repo_name, commits in commits_by_repo.items():
+            if not commits:
+                continue
+            lines.append(f"### {repo_name}")
+            lines.extend([f"- {commit}" for commit in commits])
+            lines.append("")
+    else:
+        lines.append("- Inga commits hittade.")
+        lines.append("")
+
+    lines.append("## 🔨 Idag")
+    lines.append("")
+    if planned:
+        lines.extend([f"- {item}" for item in planned])
+    else:
+        lines.append("- Fortsätt med pågående arbete baserat på gårdagens commits.")
+
+    lines.append("")
+    lines.append("## ⚠️ Blocker")
+    lines.append("")
+    if blockers:
+        lines.extend([f"- {item}" for item in blockers])
+    else:
+        lines.append("- Inga blocker just nu.")
+
+    return "\n".join(lines).strip()
+
+
+def main() -> int:
+    args = parse_args()
+
+    repos = resolve_repos(args.repos)
+    if not repos:
+        print("Error: No valid git repositories found from --repos.", file=sys.stderr)
+        return 2
+
+    commits_by_repo: OrderedDict[str, list[str]] = OrderedDict()
+    for repo in repos:
+        commits_by_repo[repo.name] = get_recent_commits(repo, args.days)
+
+    memory_dir = Path(args.memory_dir).expanduser().resolve()
+    planned, blockers = collect_memory_data(memory_dir, args.days)
+
+    print(format_report(commits_by_repo, planned, blockers))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
