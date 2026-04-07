@@ -14,6 +14,20 @@ from pathlib import Path
 
 PLAN_KEYWORDS = ("idag", "today", "plan", "todo", "next")
 BLOCKER_KEYWORDS = ("blocker", "blockers", "hinder", "blocked")
+SWEDISH_MONTHS = (
+    "januari",
+    "februari",
+    "mars",
+    "april",
+    "maj",
+    "juni",
+    "juli",
+    "augusti",
+    "september",
+    "oktober",
+    "november",
+    "december",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -126,6 +140,11 @@ def dedupe(items: list[str]) -> list[str]:
     return list(OrderedDict((item, None) for item in items).keys())
 
 
+def format_swedish_date(date_value: datetime) -> str:
+    month_name = SWEDISH_MONTHS[date_value.month - 1]
+    return f"{date_value.day} {month_name}"
+
+
 def collect_memory_data(memory_dir: Path, days: int) -> tuple[list[str], list[str]]:
     if not memory_dir.is_dir():
         return [], []
@@ -159,8 +178,9 @@ def format_report(
     commits_by_repo: OrderedDict[str, list[str]],
     planned: list[str],
     blockers: list[str],
+    yesterday_label: str,
 ) -> str:
-    lines: list[str] = ["## 📅 Igår", ""]
+    lines: list[str] = [f"## 📅 Igår ({yesterday_label})", ""]
 
     has_commits = any(commits_by_repo.values())
     if has_commits:
@@ -206,8 +226,10 @@ def main() -> int:
 
     memory_dir = Path(args.memory_dir).expanduser().resolve()
     planned, blockers = collect_memory_data(memory_dir, args.days)
+    yesterday = datetime.now() - timedelta(days=1)
+    yesterday_label = format_swedish_date(yesterday)
 
-    print(format_report(commits_by_repo, planned, blockers))
+    print(format_report(commits_by_repo, planned, blockers, yesterday_label))
     return 0
 
 
