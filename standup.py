@@ -31,20 +31,44 @@ SWEDISH_MONTHS = (
 
 
 def parse_args() -> argparse.Namespace:
+    import os
+    
     parser = argparse.ArgumentParser(description="Generate a standup report")
     parser.add_argument(
         "--repos",
-        required=True,
-        help="Comma-separated repo paths (or parent dirs containing repos)",
+        help="Comma-separated repo paths (or parent dirs containing repos). Auto-detected if not specified.",
     )
-    parser.add_argument("--memory-dir", required=True, help="Path to memory files")
+    parser.add_argument("--memory-dir", help="Path to memory files. Auto-detected if not specified.")
     parser.add_argument(
         "--days", type=int, default=1, help="Days to look back (default: 1)"
     )
+    parser.add_argument("--auto", action="store_true", help="Auto-discover repos and memory dir")
     args = parser.parse_args()
 
     if args.days < 1:
         parser.error("--days must be >= 1")
+    
+    # Auto-detect if --auto or if args not provided
+    if args.auto or not args.repos:
+        # Discover repos
+        if os.path.exists("/home/johanna/.openclaw/repos"):
+            repos_base = "/home/johanna/.openclaw/repos"
+        else:
+            repos_base = os.path.expanduser("~/projects")
+        
+        repos = []
+        for entry in os.listdir(repos_base):
+            path = os.path.join(repos_base, entry)
+            if os.path.isdir(path) and is_git_repo(Path(path)):
+                repos.append(path)
+        args.repos = ",".join(repos)
+    
+    if args.auto or not args.memory_dir:
+        if os.path.exists("/home/johanna/.openclaw/workspace/memory/"):
+            args.memory_dir = "/home/johanna/.openclaw/workspace/memory/"
+        else:
+            args.memory_dir = os.path.expanduser("~/.openclaw/workspace/memory/")
+    
     return args
 
 
