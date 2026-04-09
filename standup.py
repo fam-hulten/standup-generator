@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         if os.path.exists("/home/johanna/.openclaw/workspace/memory/"):
             args.memory_dir = "/home/johanna/.openclaw/workspace/memory/"
         else:
-            args.memory_dir = os.path.expanduser("~/.openclaw/workspace/memory/")
+            args.memory_dir = os.environ.get("STANDUP_MEMORY_DIR", os.path.expanduser("~/.openclaw/workspace/memory/"))
     
     return args
 
