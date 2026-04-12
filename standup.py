@@ -142,18 +142,15 @@ def extract_date_section_items(markdown: str) -> list[str]:
     in_date_section = False
     
     today = datetime.now()
-    date_patterns = [
-        f"## {today.strftime('%Y-%m-%d')}",
-        f"## {today.strftime('%d %B')}".lower(),
-    ]
+    today_str = today.strftime('%Y-%m-%d')
     
     for raw_line in markdown.splitlines():
         line = raw_line.strip()
         
         heading = re.match(r"^#{1,6}\s+(.+)$", line)
         if heading:
-            heading_text = heading.group(1).strip().lower()
-            in_date_section = any(pattern in heading_text for pattern in date_patterns)
+            heading_text = heading.group(1).strip()
+            in_date_section = (heading_text == today_str)
             continue
         
         if not in_date_section or not line:
