@@ -12,7 +12,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-PLAN_KEYWORDS = ("idag", "today", "plan", "todo", "next")
+PLAN_KEYWORDS = ("idag", "today", "planering", "todo", "next")
 BLOCKER_KEYWORDS = ("blocker", "blockers", "hinder", "blocked")
 SWEDISH_MONTHS = (
     "januari",
@@ -136,6 +136,37 @@ def clean_bullet(text: str) -> str:
     return without_numbering.strip()
 
 
+def extract_date_section_items(markdown: str) -> list[str]:
+    """Extract bullets from under today's date section (e.g., ## 2026-04-12)."""
+    items: list[str] = []
+    in_date_section = False
+    
+    today = datetime.now()
+    date_patterns = [
+        f"## {today.strftime('%Y-%m-%d')}",
+        f"## {today.strftime('%d %B')}".lower(),
+    ]
+    
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        
+        heading = re.match(r"^#{1,6}\s+(.+)$", line)
+        if heading:
+            heading_text = heading.group(1).strip().lower()
+            in_date_section = any(pattern in heading_text for pattern in date_patterns)
+            continue
+        
+        if not in_date_section or not line:
+            continue
+        
+        if line.startswith(("-", "*")) or re.match(r"^\d+[.)]\s+", line):
+            cleaned = clean_bullet(line)
+            if cleaned:
+                items.append(cleaned)
+    
+    return items
+
+
 def extract_section_items(markdown: str, keywords: tuple[str, ...]) -> list[str]:
     items: list[str] = []
     in_target_section = False
@@ -193,6 +224,7 @@ def collect_memory_data(memory_dir: Path, days: int) -> tuple[list[str], list[st
             continue
 
         planned.extend(extract_section_items(content, PLAN_KEYWORDS))
+        planned.extend(extract_date_section_items(content))
         blockers.extend(extract_section_items(content, BLOCKER_KEYWORDS))
 
     return dedupe(planned), dedupe(blockers)
@@ -204,32 +236,35 @@ def format_report(
     blockers: list[str],
     yesterday_label: str,
 ) -> str:
-    lines: list[str] = [f"## 📅 Igår ({yesterday_label})", ""]
+    lines: list[str] = [f"📅 IGÅR ({yesterday_label.upper()})", ""]
 
     has_commits = any(commits_by_repo.values())
     if has_commits:
         for repo_name, commits in commits_by_repo.items():
             if not commits:
                 continue
-            lines.append(f"### {repo_name}")
-            lines.extend([f"- {commit}" for commit in commits])
+            lines.append(f"{repo_name}:")
+            for commit in commits:
+                lines.append(f"- {commit}")
             lines.append("")
     else:
         lines.append("- Inga commits hittade.")
         lines.append("")
 
-    lines.append("## 🔨 Idag")
+    lines.append("🔨 IDAG")
     lines.append("")
     if planned:
-        lines.extend([f"- {item}" for item in planned])
+        for item in planned:
+            lines.append(f"- {item}")
     else:
         lines.append("- Fortsätt med pågående arbete baserat på gårdagens commits.")
 
     lines.append("")
-    lines.append("## ⚠️ Blocker")
+    lines.append("⚠️ BLOCKER")
     lines.append("")
     if blockers:
-        lines.extend([f"- {item}" for item in blockers])
+        for item in blockers:
+            lines.append(f"- {item}")
     else:
         lines.append("- Inga blocker just nu.")
 
